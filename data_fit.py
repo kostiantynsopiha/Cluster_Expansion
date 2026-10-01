@@ -89,7 +89,7 @@ for directory in final_directories:
     data = get_struct_and_energy(directory)
 
     training_data.append(
-        (data[0], data[1], directory)
+        (data[0], data[1]/216, directory)
     )
 
 print("\n===============================================")
