@@ -26,33 +26,14 @@ GGI_directories = [
                     "1.00000000000",
                   ]
 
-AAC_directories = [
-                    "0.00000000000",
-                    "0.11111111110",
-                    "0.22222222220",
-                    "0.33333333330",
-                    "0.44444444440",
-                    "0.55555555550",
-                    "0.66666666660",
-                    "0.77777777770",
-                    "0.88888888880",
-                    "1.00000000000",
-                  ]
-
 data_from_temperature_per_atom = []
 
 cutoffs = [6, 4.5]
-target_t_list = [
-                    323.15, 
-                    289.15, 
-                    273.15, 
-                    248.15
-                ]
+
 
 data_from_thermal = []
-data_from_thermal_per_atom = []
+#data_from_thermal_per_atom = []
 
-GGI = []
 
 ATAT_format_lattice_path = "initial_data_files/lat.in"
 
@@ -75,24 +56,18 @@ cluster_space = ClusterSpace(
 
 cluster_expansion = ClusterExpansion.read("generated_data_files/cluster_expansion.ce")
 
-supercell = primitive.repeat((3, 3, 3))
+supercell = primitive.repeat((5, 5, 5))
 calc = ClusterExpansionCalculator(supercell, cluster_expansion)
 
-mc_n_integration_steps = 800000
-n_equilibration_steps = 10000
-thermo_n_integration_steps = 10000
-temp_n_integration_steps = 100000
 
-temperature_max = 8000 #100 C     
-temperature_min_list = [
-                        100.15,
-                        # 200.15,
-                        # 300.15,
-                        # 500.15,
-                        # 600.15,
-                        # 700.15,
-                       ] 
-temperature_max_plot_limit = 800
+mc_n_equilibration_steps = 10000
+TDI_steps = 100000
+annealing_n_steps = 100000
+
+
+T_max = 1500
+T_min = 100
+
 
 k_B = 8.617333262e-5
 
@@ -133,155 +108,136 @@ for i in se_sites:
 
 max_Ga_In_number = int(len(supercell) / 4)
 
-for temperature_min in temperature_min_list:
-    for target_t in target_t_list: 
-        potential_from_mc = []
-        GGI = []
-
-        start_text = "START OF THE DATA SET, T = " + str(target_t) + " K, k_B = " + str(k_B) + " eV, T0 = " + str(temperature_min) + " K.\n"
-        with open("generated_data_files/thermo_E_over_GGI.txt", "a") as f:
-            f.write("==============================================\n")
-            f.write(start_text)
-            f.write("==============================================\n")
-
-        for Ga_number in range(27, max_Ga_In_number + 1):
-            for i in ga_sites[0 : Ga_number]:
-                start_configuration[i].symbol = 'Ga'
-
-            for i in ga_sites[Ga_number : len(ga_sites)]:
-                start_configuration[i].symbol = 'In'
-
-                
-            mc = CanonicalEnsemble(
-                    structure = start_configuration,
-                    calculator = calc,
-                    temperature = temperature_max,
-                    boltzmann_constant = k_B,
-                    trajectory_write_interval = None,
-                    ensemble_data_write_interval = 400
-                    )
-
-            mc.run(n_equilibration_steps)
-
-            n_before = len(mc.data_container.get('potential'))
-
-            mc.run(mc_n_integration_steps)
-
-            potential_from_mc.append(mean(mc.data_container.get('potential')[n_before:]) / len(supercell))
-            GGI.append(Ga_number / max_Ga_In_number)
-
-            mc = CanonicalEnsemble(
-                    structure = start_configuration,
-                    calculator = calc,
-                    temperature = temperature_max,
-                    boltzmann_constant = k_B,
-                    trajectory_write_interval = None,
-                    ensemble_data_write_interval = 400
-                    )
-
-            mc.run(n_equilibration_steps)
-
-            mc = ThermodynamicIntegrationEnsemble(
-                structure = mc.structure, calculator=calc,
-                temperature = temperature_min,
-                forward = True,
-                ensemble_data_write_interval = 1,
-                boltzmann_constant = k_B ,
-                n_steps = thermo_n_integration_steps)
-            mc.run()
-            data_container = mc.data_container
-
-            (_, free_energy_integration_forward) = \
-                    get_free_energy_thermodynamic_integration(data_container, cluster_space,
-                                                            forward = True,
-                                                            max_temperature = temperature_max_plot_limit,
-                                                            boltzmann_constant = k_B )
 
 
+Ga_number = len(ga_sites)//2
+for i in ga_sites[0 : Ga_number]:
+    start_configuration[i].symbol = 'Ga'
+for i in ga_sites[Ga_number : len(ga_sites)]:
+    start_configuration[i].symbol = 'In'
 
-            plt.plot(_, free_energy_integration_forward, label = "TE")
+mc = CanonicalEnsemble(
+    structure = start_configuration,
+    calculator = calc,
+    temperature = T_min,
+    boltzmann_constant = k_B,
+    trajectory_write_interval = None,
+    ensemble_data_write_interval = 100)
 
-            for i in ga_sites[0 : Ga_number]:
-                start_configuration[i].symbol = 'Ga'
+mc.run(mc_n_equilibration_steps)
 
-            for i in ga_sites[Ga_number : len(ga_sites)]:
-                start_configuration[i].symbol = 'In'
+mc = ThermodynamicIntegrationEnsemble(
+    structure = mc.structure,
+    calculator=calc,
+    temperature = T_min,
+    forward = True,
+    ensemble_data_write_interval = 1,
+    boltzmann_constant = k_B ,
+    n_steps = TDI_steps)
+mc.run()
 
+(temperatures_integration, free_energy_integration_forward) = \
+        get_free_energy_thermodynamic_integration(mc.data_container, cluster_space,
+                                                forward = True,
+                                                max_temperature = T_max,
+                                                boltzmann_constant = k_B)
 
-            mc = CanonicalEnsemble(
-                structure = start_configuration,
-                calculator = calc,
-                temperature = temperature_max,
-                boltzmann_constant = k_B,
-                trajectory_write_interval = None,
-                ensemble_data_write_interval = 400)
-            mc.run(n_equilibration_steps)
+plt.plot(temperatures_integration, free_energy_integration_forward, label = "TDI")
 
-            mc = CanonicalAnnealing(
-                    structure  = mc.structure,
-                    calculator = calc,
-                    T_start = temperature_max,
-                    T_stop  = temperature_min,
-                    cooling_function = 'linear',
-                    n_steps = temp_n_integration_steps,
-                    boltzmann_constant = k_B,
-                    trajectory_write_interval = None,
-                    ensemble_data_write_interval = 400)
-            mc.run()
+import random
+random.seed(1)
+ga_idx = random.sample(list(ga_sites), Ga_number)
+for i in ga_sites:
+    start_configuration[i].symbol = 'In'
+for i in ga_idx:
+    start_configuration[i].symbol = 'Ga'
 
-            data_container = mc.data_container
+mc = CanonicalEnsemble(
+    structure = start_configuration,
+    calculator = calc,
+    temperature = T_max,
+    boltzmann_constant = k_B,
+    trajectory_write_interval = None,
+    ensemble_data_write_interval = 1)
 
-            print(data_container.get("potential"))
-            (temperatures_temperature, free_energy_temperature_forward) = \
-                get_free_energy_temperature_integration(data_container,
-                                                        cluster_space,
-                                                        forward = True,
-                                                        temperature_reference = temperature_max,
-                                                        free_energy_reference = None, 
-                                                        max_temperature = temperature_max_plot_limit,
-                                                        boltzmann_constant = k_B)
+mc.run(mc_n_equilibration_steps)
 
-            print(temperatures_temperature)
+Enthalpy_of_random = np.average(mc.data_container.get("potential")[1000:])
+sublattices = cluster_space.get_sublattices(mc.structure)
+sublattice_probabilities = [True] * len(sublattices)
+from mchammer.free_energy_tools import _ideal_mixing_entropy, _get_atoms_on_sublattice
+atoms_on_sublattices = _get_atoms_on_sublattice(mc.structure,
+                                                sublattices)
+ideal_mixing_entropy = _ideal_mixing_entropy(sublattice_probabilities,
+                                             atoms_on_sublattices,
+                                             k_B)
+free_energy_reference = Enthalpy_of_random - ideal_mixing_entropy * T_max
 
-            mc = CanonicalEnsemble(
-                    structure = mc.structure,
-                    calculator = calc,
-                    temperature = temperature_min,
-                    boltzmann_constant = k_B,
-                    trajectory_write_interval = None,
-                    ensemble_data_write_interval = 400)
-            
-            mc.run(n_equilibration_steps)
-
-            mc = CanonicalAnnealing(
-                    structure = mc.structure,
-                    calculator = calc,
-                    T_start = temperature_min,
-                    T_stop = temperature_max,
-                    cooling_function = 'linear',
-                    n_steps = temp_n_integration_steps,
-                    boltzmann_constant = k_B,
-                    trajectory_write_interval = None,
-                    ensemble_data_write_interval = 400)
-            
-            mc.run()
-            data_container = mc.data_container
-
-            (temperatures_temperature, free_energy_temperature_backward) = \
-                get_free_energy_temperature_integration(data_container,
-                                                        cluster_space,
-                                                        forward = False,
-                                                        temperature_reference = temperature_max,
-                                                        free_energy_reference = None,
-                                                        max_temperature = temperature_max_plot_limit,
-                                                        boltzmann_constant = k_B)
+print (free_energy_reference, Enthalpy_of_random, ideal_mixing_entropy)
 
 
-            plt.plot(temperatures_temperature, free_energy_temperature_backward, label = "BACK, TIE")
+mc = CanonicalAnnealing(
+        structure  = mc.structure,
+        calculator = calc,
+        T_start = T_max,
+        T_stop  = T_min,
+        cooling_function = 'linear',
+        n_steps = annealing_n_steps,
+        boltzmann_constant = k_B,
+        trajectory_write_interval = None,
+        ensemble_data_write_interval = 1)
 
-            plt.plot(temperatures_temperature, free_energy_temperature_forward, label = "Forward, TIE")
-            plt.legend()
-            plt.show()
-            plt.plot(_, free_energy_integration_forward, label = "TE")
-            plt.show()
+mc.run()
+
+
+(temperatures_temperature, free_energy_temperature_forward) = \
+    get_free_energy_temperature_integration(mc.data_container,
+                                            cluster_space,
+                                            forward = True,
+                                            temperature_reference = T_max,
+                                            free_energy_reference = free_energy_reference,
+                                            max_temperature = T_max,
+                                            boltzmann_constant = k_B)
+
+
+
+plt.plot(temperatures_temperature, free_energy_temperature_forward, label = "Forward, TEI")
+plt.plot(mc.data_container.data["temperature"], mc.data_container.data["potential"], label = "Forward, TEI")
+
+mc = CanonicalAnnealing(
+        structure = mc.structure,
+        calculator = calc,
+        T_start = T_min,
+        T_stop = T_max,
+        cooling_function = 'linear',
+        n_steps = annealing_n_steps,
+        boltzmann_constant = k_B,
+        trajectory_write_interval = None,
+        ensemble_data_write_interval = 1)
+
+mc.run()
+
+print (free_energy_integration_forward[0])
+print (temperatures_integration[0])
+
+
+
+
+
+
+(temperatures_temperature, free_energy_temperature_backward) = \
+    get_free_energy_temperature_integration(mc.data_container,
+                                            cluster_space,
+                                            forward = False,
+                                            temperature_reference = T_max,
+                                            free_energy_reference = free_energy_reference,
+                                            max_temperature = T_max,
+                                            boltzmann_constant = k_B)
+
+plt.plot(temperatures_temperature, free_energy_temperature_backward, label = "Backward, TEI")
+plt.plot( mc.data_container.data["temperature"], mc.data_container.data["potential"], label = "Backward, TEI")
+
+plt.legend()
+plt.show()
+
 
